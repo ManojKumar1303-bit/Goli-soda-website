@@ -1,0 +1,8 @@
+
+{
+  "name": "Kaaraalan Goli Soda - The Kongu Fizz",
+  "description": "Authentic Goli Soda from the heart of Karur, serving Karur, Erode, and Coimbatore with traditional and modern flavors.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
