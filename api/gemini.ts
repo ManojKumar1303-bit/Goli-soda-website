@@ -4,7 +4,17 @@ export const config = {
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { GoogleGenAI, Type } from "@google/genai";
-import { FLAVORS } from "../constants";
+const FLAVORS = [
+  { name: "Nannari" },
+  { name: "Lemon" },
+  { name: "Orange" },
+  { name: "Pineapple" },
+  { name: "Panner" },
+  { name: "Blue Berry" },
+  { name: "Grape" },
+  { name: "Ginger" },
+];
+
 
 
 export default async function handler(
