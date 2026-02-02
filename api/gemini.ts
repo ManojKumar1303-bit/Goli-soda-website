@@ -3,19 +3,17 @@ export const config = {
 };
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { GoogleGenAI, Type } from "@google/genai";
+
 const FLAVORS = [
-  { name: "Nannari" },
-  { name: "Lemon" },
-  { name: "Orange" },
-  { name: "Pineapple" },
-  { name: "Panner" },
-  { name: "Blue Berry" },
-  { name: "Grape" },
-  { name: "Ginger" },
+  "Nannari",
+  "Lemon",
+  "Orange",
+  "Pineapple",
+  "Panner",
+  "Blue Berry",
+  "Grape",
+  "Ginger",
 ];
-
-
 
 export default async function handler(
   req: VercelRequest,
@@ -26,89 +24,107 @@ export default async function handler(
   }
 
   try {
-    const body = typeof req.body === "string"
-  ? JSON.parse(req.body)
-  : req.body;
+    const body =
+      typeof req.body === "string" ? JSON.parse(req.body) : req.body;
 
-const { type, payload } = body;
+    const { type, payload } = body;
 
-
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY as string, // 🔒 SERVER ONLY
-    });
-
-    // 🔹 CHATBOT
-    if (type === "chat") {
-      const chat = ai.chats.create({
-        model: "gemini-1.5-flash",
-        config: {
-          systemInstruction: `You are the friendly customer assistant for "Kaaraalan Goli Soda".
-          Based in Karur, serving the Kongu region (Karur, Erode, Coimbatore).
-          Available flavors: ${FLAVORS.map(f => f.name).join(", ")}.
-          Use warm, professional tone with local cultural references.`,
-        },
-      });
-
-      if (Array.isArray(payload.history)) {
-  for (const msg of payload.history) {
-    await chat.sendMessage({
-      message: msg.text,
-    });
-  }
-}
-
-
-const response = await chat.sendMessage({
-  message: payload.message,
-});
-
-
-      return res.status(200).json({ text: response.text });
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "API key missing" });
     }
 
-    // 🔹 FLAVOR MATCH
+    // ---------- CHAT ----------
+    if (type === "chat") {
+      const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
+          apiKey,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: `You are the friendly customer assistant for "Kaaraalan Goli Soda".
+Based in Karur, serving Karur, Erode, Coimbatore.
+Available flavors: ${FLAVORS.join(", ")}.
+
+User says: ${payload.message}`,
+                  },
+                ],
+              },
+            ],
+          }),
+        }
+      );
+
+      const data = await response.json();
+      const text =
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "Sorry, I couldn’t reply.";
+
+      return res.status(200).json({ text });
+    }
+
+    // ---------- FLAVOR MATCH ----------
     if (type === "match") {
       const { mood, setting, preference } = payload;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: `Suggest ONE Goli Soda flavor.
+      const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
+          apiKey,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: `Suggest ONE Goli Soda flavor from this list:
+${FLAVORS.join(", ")}
 
-Mood: "${mood}"
-Setting: "${setting}"
-Preference: "${preference}"
+Mood: ${mood}
+Setting: ${setting}
+Preference: ${preference}
 
-Available flavors: ${FLAVORS.map(f => f.name).join(", ")}`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              flavorName: { type: Type.STRING },
-              reason: { type: Type.STRING },
-            },
-            required: ["flavorName", "reason"],
-          },
-        },
-      });
+Reply strictly in JSON:
+{
+  "flavorName": "",
+  "reason": ""
+}`,
+                  },
+                ],
+              },
+            ],
+          }),
+        }
+      );
+
+      const data = await response.json();
 
       let parsed;
-try {
-  parsed = JSON.parse(response.text || "{}");
-} catch {
-  parsed = {
-    flavorName: "Classic Goli Soda",
-    reason: "A timeless Kongu-style refreshment that suits any mood.",
-  };
-}
+      try {
+        parsed = JSON.parse(
+          data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}"
+        );
+      } catch {
+        parsed = {
+          flavorName: "Classic",
+          reason: "A timeless Kongu-style refreshment.",
+        };
+      }
 
-return res.status(200).json(parsed);
-
+      return res.status(200).json(parsed);
     }
 
     return res.status(400).json({ error: "Invalid request type" });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Gemini failed" });
+    return res.status(500).json({ error: "Gemini failed" });
   }
 }
