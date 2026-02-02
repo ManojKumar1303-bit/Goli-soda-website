@@ -6,7 +6,7 @@ import { ChatMessage } from '../types';
 export const Chatbot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: "Namaste! I'm the Kaaraalan Soda assistant. How can I help you today?" }
+    { role: 'model', text: "Vanakkam! I'm the Kaaraalan Goli Soda's assistant. How can I help you today?" }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +27,11 @@ export const Chatbot: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const reply = await getGeminiChatResponse(messages, input);
+      const reply = await getGeminiChatResponse(
+  [...messages, userMsg],
+  input
+);
+
       setMessages(prev => [...prev, { role: 'model', text: reply || "I'm sorry, I couldn't process that." }]);
     } catch (error) {
       console.error(error);

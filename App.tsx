@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { FlavorGrid } from './components/FlavorGrid';
 import { Feedback } from './components/Feedback';
 import { Chatbot } from './components/Chatbot';
-// import { FlavorMatch } from './components/FlavorMatch';
+import { FlavorMatch } from './components/FlavorMatch';
 import { CONTACT_INFO } from './constants';
 const App: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -149,12 +149,12 @@ const App: React.FC = () => {
             >
               Explore 8 Flavors <i className="fas fa-chevron-right text-sm"></i>
             </button>
-            {/* <button 
+            <button 
               onClick={() => scrollToSection('match')}
               className="bg-white/10 backdrop-blur-lg border-2 border-white/20 text-white px-12 py-5 rounded-full font-bold text-xl hover:bg-white/20 transition shadow-2xl transform hover:scale-110 active:scale-95 flex items-center justify-center gap-2"
             >
               <i className="fas fa-magic"></i> AI Mood Match
-            </button> */}
+            </button>
           </div>
         </div>
         
@@ -165,7 +165,7 @@ const App: React.FC = () => {
 
       {/* Main Sections */}
       <FlavorGrid />
-      {/* <FlavorMatch /> */}
+      <FlavorMatch/>
       <Feedback />
 
       {/* Location & Contact Section */}
@@ -201,7 +201,7 @@ const App: React.FC = () => {
               </div>
 
               <div className="mt-12 pt-8 border-t border-slate-100">
-                <p className="font-bold text-slate-800 mb-4 uppercase tracking-widest text-xs">Join Our Kongu Community</p>
+                <p className="font-bold text-slate-800 mb-4 uppercase tracking-widest text-xs">Join Our Community</p>
                 <div className="flex gap-4">
                   <a href={CONTACT_INFO.socials.instagram} target="_blank" rel="noopener noreferrer" className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 hover:bg-teal-600 hover:text-white transition shadow-sm hover:shadow-lg transform hover:-translate-y-1"><i className="fab fa-instagram text-2xl"></i></a>
                   <a href={CONTACT_INFO.socials.facebook} target="_blank" rel="noopener noreferrer" className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 hover:bg-teal-600 hover:text-white transition shadow-sm hover:shadow-lg transform hover:-translate-y-1"><i className="fab fa-facebook-f text-2xl"></i></a>
@@ -283,7 +283,7 @@ const App: React.FC = () => {
       </footer>
 
       {/* Floating Chatbot */}
-      {/* <Chatbot /> */}
+      <Chatbot />
     </div>
   );
 };

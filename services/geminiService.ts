@@ -1,51 +1,72 @@
+// ❌ DO NOT import @google/genai here
+// ❌ DO NOT use process.env or import.meta.env here
+// This file only talks to the Vercel API
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { FLAVORS } from "../constants";
-
-export const getGeminiChatResponse = async (history: { role: 'user' | 'model', text: string }[], message: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  
-  const chat = ai.chats.create({
-    model: 'gemini-3-flash-preview',
-    config: {
-      systemInstruction: `You are the friendly customer assistant for "Kaaraalan Goli Soda". 
-      The company is based in Karur, Tamil Nadu and serves the Kongu region (Karur, Erode, Coimbatore).
-      Available flavors: ${FLAVORS.map(f => f.name).join(', ')}.
-      Answer questions about flavors, tradition, and company info professionally yet warmly.
-      Use local Kongu region references where appropriate (textile industry of Karur, turmeric of Erode, the climate of Coimbatore).
-      If someone asks about buying online, explain that we only sell through local distributors in Karur, Erode, and Coimbatore currently.`,
-    }
-  });
-
-  const response = await chat.sendMessage({ message });
-  return response.text;
+export type ChatHistory = {
+  role: "user" | "model";
+  text: string;
 };
 
-export const getFlavorRecommendation = async (selections: { mood: string, setting: string, preference: string }) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: `Suggest exactly one of these Goli Soda flavors based on these 3 user criteria:
-    1. Mood: "${selections.mood}"
-    2. Setting: "${selections.setting}"
-    3. Taste Preference: "${selections.preference}"
+export type FlavorSelection = {
+  mood: string;
+  setting: string;
+  preference: string;
+};
 
-    Available flavors: ${FLAVORS.map(f => f.name).join(', ')}.
-    
-    Explain why this specific flavor is the perfect match in a short, fun, and culturally relevant way (referencing the Kongu region - Karur, Erode, or Coimbatore vibes).`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          flavorName: { type: Type.STRING },
-          reason: { type: Type.STRING }
-        },
-        required: ["flavorName", "reason"]
-      }
-    }
+export type FlavorMatchResponse = {
+  flavorName: string;
+  reason: string;
+};
+
+/**
+ * Chatbot – Customer Assistant
+ */
+export const getGeminiChatResponse = async (
+  history: ChatHistory[],
+  message: string
+): Promise<string> => {
+  const response = await fetch("/api/gemini", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      type: "chat",
+      payload: {
+        history,
+        message,
+      },
+    }),
   });
 
-  return JSON.parse(response.text || '{}');
+  if (!response.ok) {
+    throw new Error("Gemini chat request failed");
+  }
+
+  const data = await response.json();
+  return data.text as string;
+};
+
+/**
+ * Flavor Match – AI Recommendation
+ */
+export const getFlavorRecommendation = async (
+  selections: FlavorSelection
+): Promise<FlavorMatchResponse> => {
+  const response = await fetch("/api/gemini", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      type: "match",
+      payload: selections,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Flavor recommendation failed");
+  }
+
+  return (await response.json()) as FlavorMatchResponse;
 };
