@@ -1,6 +1,11 @@
+export const config = {
+  runtime: "nodejs",
+};
+
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { GoogleGenAI, Type } from "@google/genai";
-import { FLAVORS } from "../constants"; // 👈 correct path (no src)
+import { FLAVORS } from "../constants";
+
 
 export default async function handler(
   req: VercelRequest,
