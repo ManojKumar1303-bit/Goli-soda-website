@@ -3,8 +3,6 @@ export const config = {
 };
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-// @ts-ignore
-import { GoogleGenerativeAI } from "@google/genai"; // If installed, otherwise we stick to fetch
 
 const FLAVORS = [
   "Nannari",
@@ -21,7 +19,7 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // CORS (Optional: Add if frontend is on a different domain, usually not needed for same-origin Vercel deployments)
+  // Debug headers for CORS if needed, but Vercel handles this usually for same-origin
   // res.setHeader('Access-Control-Allow-Origin', '*'); 
 
   if (req.method !== "POST") {
@@ -29,21 +27,38 @@ export default async function handler(
   }
 
   try {
-    const body =
-      typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    // 1. Safe Body Parsing
+    let body = req.body;
+
+    // Sometimes Vercel receives body as string even if content-type is json
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        console.error("[API] Failed to parse body string:", body);
+        return res.status(400).json({ error: "Invalid JSON body" });
+      }
+    }
+
+    if (!body || typeof body !== "object") {
+      console.error("[API] Invalid body format:", body);
+      return res.status(400).json({ error: "Body must be a JSON object" });
+    }
 
     const { type, payload } = body;
+    console.log(`[API] Request type: ${type}`);
 
+    // 2. API Key Validation
     const apiKey = process.env.GEMINI_API_KEY;
-
     if (!apiKey) {
-      console.error("CRITICAL: GEMINI_API_KEY is missing in environment variables.");
+      console.error("[CRITICAL] GEMINI_API_KEY is missing in environment variables.");
       return res.status(500).json({ error: "Server misconfiguration: API key missing" });
     }
 
-    console.log(`[API] Received request type: ${type}`);
+    // Log success (masked)
+    console.log(`[API] API Key present (Length: ${apiKey.length})`);
 
-    // ---------- CHAT ----------
+    // 3. Chat Handler
     if (type === "chat") {
       try {
         const response = await fetch(
@@ -52,60 +67,51 @@ export default async function handler(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              contents: [
-                {
-                  role: "user",
-                  parts: [
-                    {
-                      text: `You are the friendly customer assistant for "Kaaraalan Goli Soda".
+              contents: [{
+                role: "user",
+                parts: [{
+                  text: `You are the friendly customer assistant for "Kaaraalan Goli Soda".
 Based in Karur, serving Karur, Erode, Coimbatore.
 Available flavors: ${FLAVORS.join(", ")}.
 
 User says: ${payload.message}`,
-                    },
-                  ],
-                },
-              ],
+                }]
+              }]
             }),
           }
         );
 
         if (!response.ok) {
-          const errData = await response.text();
-          console.error("Gemini Chat API Error:", errData);
-          throw new Error(`Gemini API Error: ${response.statusText}`);
+          const errText = await response.text();
+          console.error(`[API] Gemini Chat Error (${response.status}):`, errText);
+          throw new Error(`Google API Message: ${errText}`);
         }
 
         const data = await response.json();
-        const text =
-          data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-          "Sorry, I couldn’t reply.";
-
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn’t reply.";
         return res.status(200).json({ text });
-      } catch (chatError) {
-        console.error("Chat Error Handler:", chatError);
-        return res.status(500).json({ error: "Failed to generate chat response" });
+
+      } catch (chatError: any) {
+        console.error("[API] Chat Exception:", chatError);
+        return res.status(500).json({ error: "Chat generation failed", details: chatError.message });
       }
     }
 
-    // ---------- FLAVOR MATCH ----------
+    // 4. Flavor Match Handler
     if (type === "match") {
       const { mood, setting, preference } = payload;
 
       try {
-        // Using 1.5-flash for consistency and speed
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              contents: [
-                {
-                  role: "user",
-                  parts: [
-                    {
-                      text: `Suggest ONE Goli Soda flavor from this list:
+              contents: [{
+                role: "user",
+                parts: [{
+                  text: `Suggest ONE Goli Soda flavor from this list:
 ${FLAVORS.join(", ")}
 
 Mood: ${mood}
@@ -117,21 +123,19 @@ Reply strictly in JSON:
   "flavorName": "",
   "reason": ""
 }`,
-                    },
-                  ],
-                },
-              ],
+                }]
+              }],
               generationConfig: {
-                response_mime_type: "application/json", // Force JSON mode if supported by the model version
+                response_mime_type: "application/json",
               }
             }),
           }
         );
 
         if (!response.ok) {
-          const errData = await response.text();
-          console.error("Gemini Match API Error:", errData);
-          throw new Error(`Gemini API Error: ${response.statusText}`);
+          const errText = await response.text();
+          console.error(`[API] Gemini Match Error (${response.status}):`, errText);
+          throw new Error(`Google API Message: ${errText}`);
         }
 
         const data = await response.json();
@@ -141,24 +145,21 @@ Reply strictly in JSON:
         try {
           parsed = JSON.parse(rawText);
         } catch (parseError) {
-          console.error("JSON Parse Error:", parseError, "Raw Text:", rawText);
-          // Fallback
-          parsed = {
-            flavorName: "Classic",
-            reason: "A timeless Kongu-style refreshment (Fallback).",
-          };
+          console.error("[API] JSON Parse Error:", rawText);
+          parsed = { flavorName: "Classic", reason: "Kongu-style refreshment." };
         }
-
         return res.status(200).json(parsed);
-      } catch (matchError) {
-        console.error("Match Error Handler:", matchError);
-        return res.status(500).json({ error: "Failed to generate flavor match" });
+
+      } catch (matchError: any) {
+        console.error("[API] Match Exception:", matchError);
+        return res.status(500).json({ error: "Flavor match failed", details: matchError.message });
       }
     }
 
     return res.status(400).json({ error: "Invalid request type" });
-  } catch (err) {
-    console.error("Global Handler Error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
+
+  } catch (err: any) {
+    console.error("[GLOBAL CRITICAL] Uncaught Exception:", err);
+    return res.status(500).json({ error: "Internal Server Error", message: err.message });
   }
 }
