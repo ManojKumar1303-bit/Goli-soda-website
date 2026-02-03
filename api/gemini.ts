@@ -61,6 +61,7 @@ export default async function handler(
     // 3. Chat Handler
     if (type === "chat") {
       try {
+        // Updated to use gemini-1.5-flash-latest to avoid 404
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
           {
@@ -84,6 +85,27 @@ User says: ${payload.message}`,
         if (!response.ok) {
           const errText = await response.text();
           console.error(`[API] Gemini Chat Error (${response.status}):`, errText);
+
+          // Fallback retry if model not found, try gemini-pro
+          if (response.status === 404) {
+            console.log("[API] Retrying with gemini-pro...");
+            const retryResponse = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ role: "user", parts: [{ text: `(Context: Kaaraalan Soda assistant)\nUser says: ${payload.message}` }] }]
+                }),
+              }
+            );
+            if (retryResponse.ok) {
+              const data = await retryResponse.json();
+              const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn’t reply.";
+              return res.status(200).json({ text });
+            }
+          }
+
           throw new Error(`Google API Message: ${errText}`);
         }
 
@@ -102,6 +124,7 @@ User says: ${payload.message}`,
       const { mood, setting, preference } = payload;
 
       try {
+        // Updated to use gemini-1.5-flash which SHOULD work, but adding fallback just in case
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
           {
@@ -135,6 +158,35 @@ Reply strictly in JSON:
         if (!response.ok) {
           const errText = await response.text();
           console.error(`[API] Gemini Match Error (${response.status}):`, errText);
+
+          if (response.status === 404) {
+            // Fallback to gemini-pro (no JSON mode, so we parse carefully)
+            console.log("[API] Retrying Match with gemini-pro...");
+            const retryResponse = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{
+                    role: "user",
+                    parts: [{
+                      text: `Suggest ONE soda flavor (${FLAVORS.join(",")}) for Mood:${mood}, Setting:${setting}. JSON format only: {"flavorName": "...", "reason": "..."}`
+                    }]
+                  }]
+                }),
+              }
+            );
+            if (retryResponse.ok) {
+              const data = await retryResponse.json();
+              const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+              // clean markdown if present
+              const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+              const parsed = JSON.parse(jsonStr);
+              return res.status(200).json(parsed);
+            }
+          }
+
           throw new Error(`Google API Message: ${errText}`);
         }
 
