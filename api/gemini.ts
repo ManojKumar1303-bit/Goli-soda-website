@@ -19,9 +19,6 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // Debug headers for CORS if needed, but Vercel handles this usually for same-origin
-  // res.setHeader('Access-Control-Allow-Origin', '*'); 
-
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -29,8 +26,6 @@ export default async function handler(
   try {
     // 1. Safe Body Parsing
     let body = req.body;
-
-    // Sometimes Vercel receives body as string even if content-type is json
     if (typeof body === "string") {
       try {
         body = JSON.parse(body);
@@ -51,61 +46,39 @@ export default async function handler(
     // 2. API Key Validation
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      console.error("[CRITICAL] GEMINI_API_KEY is missing in environment variables.");
+      console.error("[CRITICAL] GEMINI_API_KEY is missing.");
       return res.status(500).json({ error: "Server misconfiguration: API key missing" });
     }
-
-    // Log success (masked)
     console.log(`[API] API Key present (Length: ${apiKey.length})`);
 
-    // 3. Chat Handler
+    // 3. Define Model URL (Using gemini-pro for maximum compatibility)
+    // If gemini-pro fails, nothing will work for this key.
+    const MODEL_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+
+    // ---------- CHAT ----------
     if (type === "chat") {
       try {
-        // Updated to use gemini-1.5-flash-latest to avoid 404
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{
-                role: "user",
-                parts: [{
-                  text: `You are the friendly customer assistant for "Kaaraalan Goli Soda".
+        const response = await fetch(MODEL_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              role: "user",
+              parts: [{
+                text: `You are the friendly customer assistant for "Kaaraalan Goli Soda".
 Based in Karur, serving Karur, Erode, Coimbatore.
 Available flavors: ${FLAVORS.join(", ")}.
 
 User says: ${payload.message}`,
-                }]
               }]
-            }),
-          }
+            }]
+          }),
+        }
         );
 
         if (!response.ok) {
           const errText = await response.text();
           console.error(`[API] Gemini Chat Error (${response.status}):`, errText);
-
-          // Fallback retry if model not found, try gemini-pro
-          if (response.status === 404) {
-            console.log("[API] Retrying with gemini-pro...");
-            const retryResponse = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{ role: "user", parts: [{ text: `(Context: Kaaraalan Soda assistant)\nUser says: ${payload.message}` }] }]
-                }),
-              }
-            );
-            if (retryResponse.ok) {
-              const data = await retryResponse.json();
-              const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn’t reply.";
-              return res.status(200).json({ text });
-            }
-          }
-
           throw new Error(`Google API Message: ${errText}`);
         }
 
@@ -119,22 +92,19 @@ User says: ${payload.message}`,
       }
     }
 
-    // 4. Flavor Match Handler
+    // ---------- FLAVOR MATCH ----------
     if (type === "match") {
       const { mood, setting, preference } = payload;
 
       try {
-        // Updated to use gemini-1.5-flash which SHOULD work, but adding fallback just in case
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{
-                role: "user",
-                parts: [{
-                  text: `Suggest ONE Goli Soda flavor from this list:
+        const response = await fetch(MODEL_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              role: "user",
+              parts: [{
+                text: `Suggest ONE Goli Soda flavor from this list:
 ${FLAVORS.join(", ")}
 
 Mood: ${mood}
@@ -146,59 +116,34 @@ Reply strictly in JSON:
   "flavorName": "",
   "reason": ""
 }`,
-                }]
-              }],
-              generationConfig: {
-                response_mime_type: "application/json",
-              }
-            }),
-          }
+              }]
+            }]
+          }),
+        }
         );
 
         if (!response.ok) {
           const errText = await response.text();
           console.error(`[API] Gemini Match Error (${response.status}):`, errText);
-
-          if (response.status === 404) {
-            // Fallback to gemini-pro (no JSON mode, so we parse carefully)
-            console.log("[API] Retrying Match with gemini-pro...");
-            const retryResponse = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{
-                    role: "user",
-                    parts: [{
-                      text: `Suggest ONE soda flavor (${FLAVORS.join(",")}) for Mood:${mood}, Setting:${setting}. JSON format only: {"flavorName": "...", "reason": "..."}`
-                    }]
-                  }]
-                }),
-              }
-            );
-            if (retryResponse.ok) {
-              const data = await retryResponse.json();
-              const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-              // clean markdown if present
-              const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-              const parsed = JSON.parse(jsonStr);
-              return res.status(200).json(parsed);
-            }
-          }
-
           throw new Error(`Google API Message: ${errText}`);
         }
 
         const data = await response.json();
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
 
+        // Use regex to extract JSON if model adds markdown
+        let jsonStr = rawText;
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[0];
+        }
+
         let parsed;
         try {
-          parsed = JSON.parse(rawText);
+          parsed = JSON.parse(jsonStr);
         } catch (parseError) {
           console.error("[API] JSON Parse Error:", rawText);
-          parsed = { flavorName: "Classic", reason: "Kongu-style refreshment." };
+          parsed = { flavorName: "Classic", reason: "Kongu-style refreshment. (Fallback)" };
         }
         return res.status(200).json(parsed);
 
