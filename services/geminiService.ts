@@ -63,8 +63,8 @@ export const getGeminiChatResponse = async (
     return data.text as string;
   } catch (error) {
     console.error("Chat Service Error (Using Fallback):", error);
-    // FALLBACK SIMULATION - Always return a helpful message
-    return "I'm having a little trouble connecting to the fizz network right now! But I'd recommend trying our refreshing Panner Soda or checking the 'Find Us' section for our location.";
+    // FALLBACK SIMULATION - Return a functional response
+    return "Thank you for reaching out! I'm currently operating in offline mode, but I can tell you that our Kaaraalan Goli Soda is made with the finest natural ingredients. My personal favorite is the Paneer Soda! How about you try that?";
   }
 };
 
